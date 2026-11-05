@@ -1,0 +1,31 @@
+# OpenTelemetry Collector that forwards traces to CloudWatch with an X-Ray API key.
+# The key comes from the environment. Never write it into this file.
+extensions:
+  bearertokenauth:
+    token: "${env:XRAY_API_KEY}"
+    # On Kubernetes or anywhere with mounted secrets, read a file instead:
+    # filename: "/etc/otel/xray-api-key"
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+exporters:
+  otlphttp/traces:
+    compression: gzip
+    traces_endpoint: "${env:XRAY_TRACES_ENDPOINT}"
+    auth:
+      authenticator: bearertokenauth
+
+service:
+  extensions: [bearertokenauth]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/traces]
