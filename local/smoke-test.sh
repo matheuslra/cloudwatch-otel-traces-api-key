@@ -28,7 +28,8 @@ fi
 echo "SDK spans reach the mock through the collector, which holds the key"
 env -u XRAY_API_KEY OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces python app/send_spans.py
 for _ in $(seq 1 30); do
-  if docker compose --profile local logs mock | grep -q '200 /v1/traces application/x-protobuf'; then
+  logs="$(docker compose --profile local logs mock)"
+  if grep -q '200 /v1/traces application/x-protobuf' <<<"$logs"; then
     echo "Smoke test passed"
     exit 0
   fi
