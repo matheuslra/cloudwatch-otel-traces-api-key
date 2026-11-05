@@ -53,18 +53,6 @@ OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces python app/send_spans.py
 
 `./local/smoke-test.sh` runs all of this at once and fails if a wrong key is accepted or the collector doesn't deliver.
 
-## Security checks
-
-The `Security` workflow runs on every push to `main`, on pull requests, weekly, and on demand. None of its jobs needs an API key or AWS access.
-
-- **Secret scan:** gitleaks checks the full git history on every run.
-- **Code scan:** CodeQL checks the Python code and the GitHub Actions workflows, and fails on any finding. It doesn't read the shell scripts.
-- **Smoke test:** runs `./local/smoke-test.sh` against the mock endpoint.
-
-Changes are also reviewed with Claude Code's [`/security-review`](https://support.claude.com/en/articles/11932705-automated-security-reviews-in-claude-code) before they're pushed.
-
-These checks add to human review and don't replace it. They can't tell you the sample is safe for your environment.
-
 ## Run it against AWS
 
 These steps create real resources in your account, and CloudWatch charges apply to the spans you send.
@@ -129,7 +117,7 @@ aws secretsmanager delete-secret --secret-id xray-traces-api-key
 - [OTLP Endpoints](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-OTLPEndpoint.html)
 - [What's New announcement](https://aws.amazon.com/about-aws/whats-new/2026/11/amazon-cloudwatch-api-keys-opentelemetry/)
 
-This is sample code for learning, not an official AWS project.
+This is sample code for learning, not an official AWS project. Review it before you use it in your environment.
 
 ## License
 
