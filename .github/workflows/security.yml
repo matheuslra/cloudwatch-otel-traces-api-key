@@ -25,6 +25,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+  code-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: github/codeql-action/init@f3bbb05694c2f74569081c28664c0866d64dec21 # v4.39.3
+        with:
+          languages: python, actions
+      - uses: github/codeql-action/analyze@f3bbb05694c2f74569081c28664c0866d64dec21 # v4.39.3
+        with:
+          upload: never
+          output: codeql-results
+      # CodeQL reports findings without failing the job, so this step is what blocks.
+      - name: Fail on findings
+        run: |
+          jq -r '.runs[].results[]? | "\(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' codeql-results/*.sarif > findings.txt
+          cat findings.txt
+          test ! -s findings.txt
+
   smoke-test:
     runs-on: ubuntu-latest
     steps:

@@ -55,7 +55,13 @@ OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces python app/send_spans.py
 
 ## Security checks
 
-The `Security` workflow scans the full git history for secrets and runs the smoke test on every push, on pull requests, and weekly. On pull requests from this repo, [Claude's security review](https://github.com/anthropics/claude-code-security-review) also reads the changes, through a [shared workflow](https://github.com/matheuslra/security-workflows) that fetches its API key from AWS. To reuse this in your own fork, delete `.github/workflows/claude-review.yml` or point it at your own setup. The review isn't hardened against prompt injection, so it skips forks. Keep "Require approval for all external contributors" on in the repository's Actions settings.
+The `Security` workflow runs on every push to `main`, on pull requests, weekly, and on demand. None of its jobs needs an API key or AWS access.
+
+- **Secret scan:** gitleaks checks the new commits on a push or pull request, and the full git history on the weekly and on-demand runs.
+- **Code scan:** CodeQL checks the Python code and the GitHub Actions workflows, and fails on any finding. It doesn't read the shell scripts.
+- **Smoke test:** runs `./local/smoke-test.sh` against the mock endpoint.
+
+Changes are also reviewed with Claude Code's [`/security-review`](https://support.claude.com/en/articles/11932705-automated-security-reviews-in-claude-code) before they're pushed.
 
 These checks add to human review and don't replace it. They can't tell you the sample is safe for your environment.
 
