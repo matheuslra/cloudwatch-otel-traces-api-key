@@ -26,7 +26,7 @@ class Handler(BaseHTTPRequestHandler):
 
         reply = b"{}" if content_type == "application/json" and status == 200 else b""
         self.send_response(status)
-        self.send_header("Content-Type", content_type or "application/x-protobuf")
+        self.send_header("Content-Type", "application/json" if content_type == "application/json" else "application/x-protobuf")
         self.send_header("Content-Length", str(len(reply)))
         self.end_headers()
         self.wfile.write(reply)
