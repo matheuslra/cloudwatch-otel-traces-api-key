@@ -51,6 +51,14 @@ unset XRAY_API_KEY
 OTLP_TRACES_ENDPOINT=http://localhost:4318/v1/traces python app/send_spans.py
 ```
 
+`./local/smoke-test.sh` runs all of this at once and fails if a wrong key is accepted or the collector doesn't deliver.
+
+## Security checks
+
+The `Security` workflow scans the full git history for secrets and runs the smoke test on every push, on pull requests, and weekly. On pull requests from this repo, [Claude's security review](https://github.com/anthropics/claude-code-security-review) also reads the changes. It needs a `CLAUDE_API_KEY` repository secret. It isn't hardened against prompt injection, so it skips forks. Keep "Require approval for all external contributors" on in the repository's Actions settings.
+
+These checks add to human review and don't replace it. They can't tell you the sample is safe for your environment.
+
 ## Run it against AWS
 
 These steps create real resources in your account, and CloudWatch charges apply to the spans you send.
