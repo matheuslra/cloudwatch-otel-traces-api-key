@@ -8,16 +8,6 @@ Use SigV4 with short-term credentials wherever you can. API keys are long-lived,
 
 ## What gets deployed
 
-The same stack is here three times. Pick one:
-
-| Path | Tool |
-| --- | --- |
-| `cloudformation/template.yaml` | CloudFormation |
-| `cdk/` | AWS CDK in TypeScript |
-| `terraform/` | Terraform, with the `aws` and `awscc` providers |
-
-Each one creates:
-
 | Resource | Why |
 | --- | --- |
 | Transaction Search, and the log resource policy it needs | The OTLP traces endpoint requires it. It's account-wide, so you can turn it off in the stack if it's already on |
@@ -28,34 +18,23 @@ Each one creates:
 
 The key itself isn't in the stack. CloudFormation has no resource for it, and creating it with `scripts/create-key.sh` keeps it out of templates and Terraform state.
 
-## Deploy
+## Pick a version
 
-This creates real resources, and CloudWatch charges apply to the spans you send. First check whether Transaction Search is already on. If this returns `"Status": "ACTIVE"`, turn it off in the stack with the setting shown below each command.
+The stack is written three ways. They create the same resources, so deploy only one. Each folder's README has its deploy command, settings, outputs and clean-up.
+
+| Version | Folder |
+| --- | --- |
+| CloudFormation | [`cloudformation/`](cloudformation/README.md) |
+| AWS CDK in TypeScript | [`cdk/`](cdk/README.md) |
+| Terraform | [`terraform/`](terraform/README.md) |
+
+This creates real resources, and CloudWatch charges apply to the spans you send. Use a [Region that supports API keys](https://docs.aws.amazon.com/xray/latest/devguide/xray-opentelemetry-bearer-token.html), and first check whether Transaction Search is already on:
 
 ```bash
 aws xray get-trace-segment-destination
 ```
 
-Use a [Region that supports API keys](https://docs.aws.amazon.com/xray/latest/devguide/xray-opentelemetry-bearer-token.html).
-
-**CloudFormation** (add `--parameter-overrides EnableTransactionSearch=false` if it's already on):
-
-```bash
-aws cloudformation deploy --stack-name xray-api-key-demo \
-  --template-file cloudformation/template.yaml --capabilities CAPABILITY_NAMED_IAM
-```
-
-**CDK** (add `-c enableTransactionSearch=false`):
-
-```bash
-cd cdk && npm ci && npx cdk deploy
-```
-
-**Terraform** (add `-var enable_transaction_search=false`):
-
-```bash
-cd terraform && terraform init && terraform apply
-```
+If it returns `"Status": "ACTIVE"`, turn Transaction Search off in the stack with that version's setting, so the stack doesn't try to own it.
 
 ## Create a key and send a trace
 
@@ -117,7 +96,7 @@ aws iam attach-user-policy --user-name xray-traces-api-key-user \
 
 ## Clean up
 
-IAM won't delete a user that still has keys, so delete the keys and detach the kill switch if you attached it. Then remove the stack.
+IAM won't delete a user that still has keys, so delete the keys and detach the kill switch if you attached it:
 
 ```bash
 user=xray-traces-api-key-user
@@ -125,19 +104,15 @@ for id in $(aws iam list-service-specific-credentials --user-name "$user" --serv
   --query 'ServiceSpecificCredentials[].ServiceSpecificCredentialId' --output text); do
   ./scripts/rotate-key.sh delete "$id"
 done
-
-aws cloudformation delete-stack --stack-name xray-api-key-demo   # CloudFormation
-npx cdk destroy                                                   # CDK, from cdk/
-terraform destroy                                                 # Terraform, from terraform/
 ```
+
+Then remove the stack with your version's clean-up step: [CloudFormation](cloudformation/README.md#clean-up), [CDK](cdk/README.md#clean-up) or [Terraform](terraform/README.md#clean-up).
 
 Afterwards, run `aws xray get-trace-segment-destination` to confirm whether Transaction Search is still on.
 
-## What was tested
+## What CI checks
 
-- CI lints the CloudFormation template, synthesizes the CDK app, validates the Terraform and the collector config, and checks the scripts on every push.
-- AWS's `ValidateTemplate` API accepted the CloudFormation template.
-- I haven't deployed these stacks or sent a span through them, so try them in a test account first.
+On every push, CI lints the CloudFormation template, synthesizes the CDK app, validates the Terraform and the collector config, and checks the scripts. None of it needs AWS credentials.
 
 ## Learn more
 
