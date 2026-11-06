@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: github/codeql-action/init@f3bbb05694c2f74569081c28664c0866d64dec21 # v4.39.3
         with:
-          languages: python, actions
+          languages: python, javascript-typescript, actions
       - uses: github/codeql-action/analyze@f3bbb05694c2f74569081c28664c0866d64dec21 # v4.39.3
         with:
           upload: never
@@ -49,6 +49,7 @@ jobs:
           cat findings.txt
           test ! -s findings.txt
 
+  # Checks that each version of the stack is valid without deploying it, so no AWS credentials are needed.
   smoke-test:
     runs-on: ubuntu-latest
     steps:
@@ -56,5 +57,25 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
-      - run: pip install -r app/requirements.txt
-      - run: ./local/smoke-test.sh
+      - name: Lint the CloudFormation template
+        run: pip install cfn-lint && cfn-lint cloudformation/template.yaml
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Synthesize the CDK app
+        working-directory: cdk
+        run: npm ci && npx cdk synth --quiet
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+      - name: Validate the Terraform
+        working-directory: terraform
+        run: terraform fmt -check && terraform init -backend=false && terraform validate
+      - name: Validate the collector config
+        run: |
+          docker run --rm -v "$PWD/collector:/conf:ro" -e XRAY_API_KEY=placeholder \
+            -e XRAY_TRACES_ENDPOINT=https://xray.us-east-1.amazonaws.com/v1/traces \
+            otel/opentelemetry-collector-contrib:0.164.0 validate --config=/conf/config.yaml
+      - name: Check the scripts
+        run: |
+          pip install -r app/requirements.txt
+          python -m py_compile app/send_spans.py
+          for f in scripts/*.sh; do bash -n "$f"; done

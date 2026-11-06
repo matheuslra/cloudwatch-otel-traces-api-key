@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Create an IAM user for one integration, give it an expiring X-Ray API key, and store the key in Secrets Manager.
-# Run with AWS credentials. You can't manage API keys with an API key.
+# Give the stack's IAM user an expiring X-Ray API key, and store the key in the stack's secret.
+# Run it with AWS credentials that have the xray-api-key-issuer policy. You can't manage API keys with an API key.
+# The stack doesn't create the key, so the key never lands in a template, a CDK output or a Terraform state file.
 set -euo pipefail
 
 user="${USER_NAME:-xray-traces-api-key-user}"
-days="${KEY_AGE_DAYS:-90}"
+days="${KEY_AGE_DAYS:-30}"
 secret="${SECRET_NAME:-xray-traces-api-key}"
-
-aws iam get-user --user-name "$user" >/dev/null 2>&1 || aws iam create-user --user-name "$user" >/dev/null
-aws iam attach-user-policy --user-name "$user" \
-  --policy-arn arn:aws:iam::aws:policy/AWSXRayAPIKeyAccess
 
 read -r key_id key < <(aws iam create-service-specific-credential \
   --user-name "$user" \
@@ -20,12 +17,7 @@ read -r key_id key < <(aws iam create-service-specific-credential \
 : "${key:?Could not create the API key}"
 
 # The key goes through stdin so it stays out of the process list. AWS won't show it again.
-if aws secretsmanager describe-secret --secret-id "$secret" >/dev/null 2>&1; then
-  printf '%s' "$key" | aws secretsmanager put-secret-value --secret-id "$secret" \
-    --secret-string file:///dev/stdin >/dev/null
-else
-  printf '%s' "$key" | aws secretsmanager create-secret --name "$secret" \
-    --secret-string file:///dev/stdin >/dev/null
-fi
+printf '%s' "$key" | aws secretsmanager put-secret-value --secret-id "$secret" \
+  --secret-string file:///dev/stdin >/dev/null
 
-echo "Created key $key_id for $user, expires in $days days, stored in secret $secret"
+echo "Created key $key_id for $user. It expires in $days days and is stored in secret $secret."

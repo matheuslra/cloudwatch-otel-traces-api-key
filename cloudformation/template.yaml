@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Everything an X-Ray API key needs except the key itself. scripts/create-key.sh creates the key,
+  so it never lands in a template or a state file.
+
+Parameters:
+  EnableTransactionSearch:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: Set to false if Transaction Search is already on in this account and Region
+  MaxKeyAgeDays:
+    Type: Number
+    Default: 90
+    MinValue: 1
+    MaxValue: 36600
+    Description: The longest expiry the issuer policy allows on a key
+
+Conditions:
+  CreateTransactionSearch: !Equals [!Ref EnableTransactionSearch, 'true']
+
+Resources:
+  # Transaction Search is account-wide. The OTLP traces endpoint rejects spans until it's on.
+  SpansResourcePolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Condition: CreateTransactionSearch
+    Properties:
+      PolicyName: xray-transaction-search
+      PolicyDocument: !Sub >-
+        {"Version":"2012-10-17","Statement":[{"Sid":"TransactionSearchXRayAccess","Effect":"Allow",
+        "Principal":{"Service":"xray.amazonaws.com"},"Action":"logs:PutLogEvents",
+        "Resource":["arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*",
+        "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/application-signals/data:*"],
+        "Condition":{"ArnLike":{"aws:SourceArn":"arn:${AWS::Partition}:xray:${AWS::Region}:${AWS::AccountId}:*"},
+        "StringEquals":{"aws:SourceAccount":"${AWS::AccountId}"}}}]}
+
+  TransactionSearch:
+    Type: AWS::XRay::TransactionSearchConfig
+    Condition: CreateTransactionSearch
+    DependsOn: SpansResourcePolicy
+    Properties:
+      IndexingPercentage: 1
+
+  # The key's owner. It can send spans and nothing else.
+  TracesUser:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: xray-traces-api-key-user
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AWSXRayAPIKeyAccess
+
+  # Holds the key. It starts empty, and scripts/create-key.sh writes the value.
+  KeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: xray-traces-api-key
+      Description: X-Ray API key for xray-traces-api-key-user
+
+  # Attach to whoever issues and rotates keys. It refuses a key with no expiry, or one longer than MaxKeyAgeDays.
+  KeyIssuerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: xray-api-key-issuer
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: CreateOnlyExpiringXRayKeys
+            Effect: Allow
+            Action: iam:CreateServiceSpecificCredential
+            Resource: !GetAtt TracesUser.Arn
+            Condition:
+              StringEquals:
+                iam:ServiceSpecificCredentialServiceName: xray.amazonaws.com
+              NumericLessThanEquals:
+                iam:ServiceSpecificCredentialAgeDays: !Ref MaxKeyAgeDays
+          - Sid: RotateAndRevokeKeys
+            Effect: Allow
+            Action:
+              - iam:ListServiceSpecificCredentials
+              - iam:UpdateServiceSpecificCredential
+              - iam:DeleteServiceSpecificCredential
+            Resource: !GetAtt TracesUser.Arn
+          - Sid: StoreTheKey
+            Effect: Allow
+            Action:
+              - secretsmanager:DescribeSecret
+              - secretsmanager:PutSecretValue
+            Resource: !Ref KeySecret
+
+  # Attach to the user if a key might be compromised. It blocks every key the user has within about five minutes.
+  KillSwitchPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: xray-api-key-kill-switch
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyXRayApiKeys
+            Effect: Deny
+            Action: xray:CallWithBearerToken
+            Resource: '*'
+
+Outputs:
+  UserName:
+    Value: !Ref TracesUser
+  SecretName:
+    Value: xray-traces-api-key
+  KeyIssuerPolicyArn:
+    Value: !Ref KeyIssuerPolicy
+  KillSwitchPolicyArn:
+    Value: !Ref KillSwitchPolicy
+  TracesEndpoint:
+    Value: !Sub https://xray.${AWS::Region}.amazonaws.com/v1/traces

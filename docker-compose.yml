@@ -9,15 +9,3 @@ services:
       XRAY_TRACES_ENDPOINT: ${XRAY_TRACES_ENDPOINT:?Set XRAY_TRACES_ENDPOINT}
     ports:
       - "127.0.0.1:4318:4318"
-
-  # Stand-in for the X-Ray endpoint, so you can try the flow without an AWS account.
-  mock:
-    profiles: [local]
-    image: python:3.13-slim
-    command: ["python", "-u", "/mock_otlp.py"]
-    volumes:
-      - ./local/mock_otlp.py:/mock_otlp.py:ro
-    environment:
-      XRAY_API_KEY: ${XRAY_API_KEY:?Set XRAY_API_KEY}
-    ports:
-      - "127.0.0.1:4319:4319"
